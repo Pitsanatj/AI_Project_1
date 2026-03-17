@@ -555,72 +555,80 @@ def train_magnification(mag, loaders, model_name, args, device, use_amp, writer,
 def _plot_training_curves(history: dict, model_name: str, mag: str, output_dir: str):
     """
     Plot Accuracy (train vs val) และ Loss (train vs val) per epoch.
-    แสดง 20 epoch ล่าสุดเมื่อ epoch ทั้งหมด > 20
-    บันทึกที่ output_dir/figures/<model>_<mag>_curves.pdf
+    บันทึก 2 ไฟล์:
+      - _curves_half.pdf  → ครึ่งแรก  (epoch 1 … n//2)
+      - _curves_full.pdf  → ทั้งหมด   (epoch 1 … n)
+    บันทึกที่ output_dir/figures/
     """
-    epochs    = history["epoch"]
-    n         = len(epochs)
-    show_last = 20
-    start_idx = max(0, n - show_last)
-
-    ep     = epochs[start_idx:]
-    t_acc  = history["train_acc"][start_idx:]
-    v_acc  = history["val_acc"][start_idx:]
-    t_loss = history["train_loss"][start_idx:]
-    v_loss = history["val_loss"][start_idx:]
-
-    fig, axes = plt.subplots(1, 2, figsize=(13, 5))
-    fig.suptitle(
-        f"{model_name.upper()} | {mag}"
-        + (f"  (last {show_last} / {n} epochs)" if n > show_last else f"  ({n} epochs)"),
-        fontsize=13, fontweight="bold",
-    )
-
-    # ── Accuracy ──────────────────────────────────────────────────────────────
-    ax = axes[0]
-    ax.plot(ep, t_acc, "o-",  color="#2196F3", label="Train Acc", linewidth=2, markersize=4)
-    ax.plot(ep, v_acc, "s--", color="#FF5722", label="Val Acc",   linewidth=2, markersize=4)
-    ax.set_xlabel("Epoch", fontsize=11)
-    ax.set_ylabel("Accuracy", fontsize=11)
-    ax.set_title("Accuracy vs Epoch", fontsize=12)
-    ax.legend(fontsize=10)
-    ax.grid(True, alpha=0.3)
-    ax.set_ylim([max(0, min(t_acc + v_acc) - 0.05), 1.02])
-    best_v_idx = int(np.argmax(v_acc))
-    ax.annotate(
-        f"best val\n{v_acc[best_v_idx]:.4f}",
-        xy=(ep[best_v_idx], v_acc[best_v_idx]),
-        xytext=(ep[best_v_idx], max(0, v_acc[best_v_idx] - 0.06)),
-        arrowprops=dict(arrowstyle="->", color="#FF5722"),
-        fontsize=8, color="#FF5722", ha="center",
-    )
-
-    # ── Loss ──────────────────────────────────────────────────────────────────
-    ax = axes[1]
-    ax.plot(ep, t_loss, "o-",  color="#2196F3", label="Train Loss", linewidth=2, markersize=4)
-    ax.plot(ep, v_loss, "s--", color="#FF5722", label="Val Loss",   linewidth=2, markersize=4)
-    ax.set_xlabel("Epoch", fontsize=11)
-    ax.set_ylabel("Loss", fontsize=11)
-    ax.set_title("Loss vs Epoch", fontsize=12)
-    ax.legend(fontsize=10)
-    ax.grid(True, alpha=0.3)
-    best_vl_idx = int(np.argmin(v_loss))
-    loss_range  = max(v_loss) - min(v_loss)
-    ax.annotate(
-        f"best val\n{v_loss[best_vl_idx]:.4f}",
-        xy=(ep[best_vl_idx], v_loss[best_vl_idx]),
-        xytext=(ep[best_vl_idx], v_loss[best_vl_idx] + max(loss_range * 0.15, 0.01)),
-        arrowprops=dict(arrowstyle="->", color="#FF5722"),
-        fontsize=8, color="#FF5722", ha="center",
-    )
-
-    fig.tight_layout()
     figure_dir = os.path.join(output_dir, "figures")
     os.makedirs(figure_dir, exist_ok=True)
-    curve_path = os.path.join(figure_dir, f"{model_name}_{mag}_curves.pdf")
-    plt.savefig(curve_path, bbox_inches="tight", dpi=150)
-    plt.close(fig)
-    print(f"  Training curves     → {curve_path}")
+
+    epochs = history["epoch"]
+    n      = len(epochs)
+
+    # กำหนด 2 slice: ครึ่งแรก และทั้งหมด
+    half   = max(1, n // 2)
+    slices = [
+        (slice(0, half), "half", f"epoch 1–{epochs[half-1]}"),
+        (slice(0, n),    "full", f"epoch 1–{epochs[-1]}"),
+    ]
+
+    for sl, suffix, label in slices:
+        ep     = epochs[sl]
+        t_acc  = history["train_acc"][sl]
+        v_acc  = history["val_acc"][sl]
+        t_loss = history["train_loss"][sl]
+        v_loss = history["val_loss"][sl]
+
+        fig, axes = plt.subplots(1, 2, figsize=(13, 5))
+        fig.suptitle(
+            f"{model_name.upper()} | {mag}  ({label})",
+            fontsize=13, fontweight="bold",
+        )
+
+        # ── Accuracy ──────────────────────────────────────────────────────────
+        ax = axes[0]
+        ax.plot(ep, t_acc, "o-",  color="#2196F3", label="Train Acc", linewidth=2, markersize=4)
+        ax.plot(ep, v_acc, "s--", color="#FF5722", label="Val Acc",   linewidth=2, markersize=4)
+        ax.set_xlabel("Epoch", fontsize=11)
+        ax.set_ylabel("Accuracy", fontsize=11)
+        ax.set_title("Accuracy vs Epoch", fontsize=12)
+        ax.legend(fontsize=10)
+        ax.grid(True, alpha=0.3)
+        ax.set_ylim([max(0, min(t_acc + v_acc) - 0.05), 1.02])
+        best_v_idx = int(np.argmax(v_acc))
+        ax.annotate(
+            f"best val\n{v_acc[best_v_idx]:.4f}",
+            xy=(ep[best_v_idx], v_acc[best_v_idx]),
+            xytext=(ep[best_v_idx], max(0, v_acc[best_v_idx] - 0.06)),
+            arrowprops=dict(arrowstyle="->", color="#FF5722"),
+            fontsize=8, color="#FF5722", ha="center",
+        )
+
+        # ── Loss ──────────────────────────────────────────────────────────────
+        ax = axes[1]
+        ax.plot(ep, t_loss, "o-",  color="#2196F3", label="Train Loss", linewidth=2, markersize=4)
+        ax.plot(ep, v_loss, "s--", color="#FF5722", label="Val Loss",   linewidth=2, markersize=4)
+        ax.set_xlabel("Epoch", fontsize=11)
+        ax.set_ylabel("Loss", fontsize=11)
+        ax.set_title("Loss vs Epoch", fontsize=12)
+        ax.legend(fontsize=10)
+        ax.grid(True, alpha=0.3)
+        best_vl_idx = int(np.argmin(v_loss))
+        loss_range  = max(v_loss) - min(v_loss)
+        ax.annotate(
+            f"best val\n{v_loss[best_vl_idx]:.4f}",
+            xy=(ep[best_vl_idx], v_loss[best_vl_idx]),
+            xytext=(ep[best_vl_idx], v_loss[best_vl_idx] + max(loss_range * 0.15, 0.01)),
+            arrowprops=dict(arrowstyle="->", color="#FF5722"),
+            fontsize=8, color="#FF5722", ha="center",
+        )
+
+        fig.tight_layout()
+        curve_path = os.path.join(figure_dir, f"{model_name}_{mag}_curves_{suffix}.pdf")
+        plt.savefig(curve_path, bbox_inches="tight", dpi=150)
+        plt.close(fig)
+        print(f"  Training curves ({suffix:<4}) → {curve_path}")
 
 
 # ── Helper: metrics summary table ─────────────────────────────────────────────

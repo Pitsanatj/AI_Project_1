@@ -137,6 +137,10 @@ def get_default_target_layer(model: nn.Module, model_name: str) -> nn.Module:
     key = model_name.lower()
 
     try:
+        if key == "efficientnet_gru":
+            # ดึงจากชั้น features ตัวสุดท้ายของ EfficientNetV2-S
+            return model.features[-1]
+        
         if key == "ecsamet":
             # Last EfficientNetV2-S block BEFORE CBAM — rich spatial features
             return model.features[6]

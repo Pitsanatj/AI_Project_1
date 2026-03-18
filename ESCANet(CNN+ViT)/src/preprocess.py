@@ -269,3 +269,87 @@ def build_final_normalise():
         v2.ToDtype(torch.float32, scale=True),
         v2.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD),
     ])
+
+
+# ── Otsu Segmentation Transform (paper C0 preprocessing) ─────────────────────
+class OtsuSegmentationTransform:
+    """
+    Otsu's thresholding segmentation (paper eq. 4-5).
+
+    Algorithm:
+      1. Convert RGB → Grayscale
+      2. Otsu threshold T = argmax σ²(θ)   (OpenCV THRESH_OTSU)
+      3. Binary mask: foreground (I > T) = 1, background = 0
+      4. Apply mask to RGB: keep foreground colours, zero background
+
+    This extracts the tissue ROI (nuclei, glandular structures) and
+    removes slide background, matching the paper's segmentation step.
+
+    Same callable API as StainNormalizationTransform — drop-in in pipeline.
+    """
+
+    def __call__(self, image: Image.Image) -> Image.Image:
+        if not isinstance(image, Image.Image):
+            raise TypeError("Input must be a PIL Image.")
+        img_np = np.array(image.convert("RGB"), dtype=np.uint8)
+        gray   = cv2.cvtColor(img_np, cv2.COLOR_RGB2GRAY)
+        _, mask = cv2.threshold(
+            gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU
+        )
+        # Apply mask: foreground = original colour, background = 0
+        masked = img_np.copy()
+        masked[mask == 0] = 0
+        return Image.fromarray(masked)
+
+
+# ── Paper preprocessing pipeline (C-series experiments) ──────────────────────
+def build_paper_preprocess(img_size: int, use_otsu: bool = True):
+    """
+    Preprocessing for TRAINING images following the paper's pipeline.
+
+    Pipeline:
+      Resize → CenterCrop → [Otsu segmentation] → ToImage → uint8
+
+    Matches paper:
+      • Resize to img_size × img_size (paper uses 224)
+      • Otsu segmentation (paper eq. 4-5)
+      • uint8 output so augmentation (AugMix, flips) works correctly
+
+    Parameters
+    ----------
+    img_size : int   — target spatial size (224 for paper, 384 for B0-style)
+    use_otsu : bool  — True = paper pipeline, False = no segmentation
+    """
+    steps = [
+        v2.Resize((img_size, img_size), interpolation=InterpolationMode.BILINEAR),
+        v2.CenterCrop((img_size, img_size)),
+    ]
+    if use_otsu:
+        steps.append(OtsuSegmentationTransform())
+    steps += [
+        v2.ToImage(),
+        v2.ToDtype(torch.uint8, scale=True),
+    ]
+    return v2.Compose(steps)
+
+
+def build_paper_vtpreprocess(img_size: int, use_otsu: bool = True):
+    """
+    Full preprocessing + normalisation for VAL / TEST images (paper pipeline).
+
+    Pipeline:
+      Resize → CenterCrop → [Otsu] → ToImage → uint8 → float32 → Normalize
+    """
+    steps = [
+        v2.Resize((img_size, img_size), interpolation=InterpolationMode.BILINEAR),
+        v2.CenterCrop((img_size, img_size)),
+    ]
+    if use_otsu:
+        steps.append(OtsuSegmentationTransform())
+    steps += [
+        v2.ToImage(),
+        v2.ToDtype(torch.uint8, scale=True),
+        v2.ToDtype(torch.float32, scale=True),
+        v2.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD),
+    ]
+    return v2.Compose(steps)

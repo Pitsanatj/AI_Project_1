@@ -4,7 +4,7 @@ run_exp.py  —  ECSAnet → HybridECSAnet experiment launcher
 Wraps "main (2).py" with pre-defined configs for the B-series architecture
 ablation (ECSANet → Hybrid Eff+ViT) and the combined contrastive chain.
 
-Usage 
+Usage
 -----
     python run_exp.py B0                     # ECSANet-S baseline
     python run_exp.py B4                     # paper's HybridEffNetV2M-ViT
@@ -218,6 +218,78 @@ EXPERIMENTS: dict[str, dict] = {
         "output_dir":   "./outputs/B6",
         "experiment":   "B6-EffV2M-CBAM-ViTB16-Macenko",
     },
+
+    # ═══════════════════════════════════════════════════════════════════════════
+    # C-SERIES: EfficientNetV2-S + GRU + Attention (8-class)
+    # Adapted from: "A Hybrid Deep Learning Model for Breast Cancer Detection
+    #   Using EfficientNetV2 and GRU with Attention" (Scientific Reports 2025)
+    #
+    # Original paper: binary (benign/malignant), 80:20 split
+    # Adaptations   : 8-class classification, 70:20:10 split (existing npy)
+    #
+    # Architecture:
+    #   EfficientNetV2-S → spatial map (B,1280,H',W')
+    #   → reshape (B, H'×W', 1280) sequence
+    #   → GRU (hidden=512, layers=2, dropout=0.5)
+    #   → Attention (tanh scoring → softmax → context vector)
+    #   → Dropout(0.5) → FC(512→8)
+    #
+    # C0: paper's preprocessing  (Resize 224 → Otsu segmentation → ImageNet norm)
+    # C1: B0's preprocessing    (Reinhard stain norm → Resize 384 → ImageNet norm)
+    # ═══════════════════════════════════════════════════════════════════════════
+
+    # Paper hyperparams (Table 2) — shared across C-series
+    # ─── C0: EffV2S-GRU + paper preprocessing ─────────────────────────────────
+    # Follows original paper as closely as possible:
+    #   • img_size = 224   (paper uses 224×224)
+    #   • preprocess = otsu  (paper: Resize → Otsu segmentation → Standardize)
+    #   • optimizer = adam, lr=0.001, β1=0.9, β2=0.999, ε=1e-8
+    #   • dropout = 0.5, L2 weight_decay = 0.0001
+    #   • early_stopping patience = 5 (lr scheduler), 25 (training)
+    #   • 8-class CrossEntropyLoss (vs paper's binary BCE)
+    #   • 70:20:10 split (vs paper's 80:20 — using existing npy split)
+    "C0": {
+        **_COMMON,
+        "preprocess":        "otsu",         # paper: Otsu segmentation
+        "img_size":          224,            # paper: 224×224
+        "optimizer":         "adam",         # paper: Adam
+        "lr":                1e-3,           # paper Table 2: 0.001
+        "weight_decay":      1e-4,           # paper: L2 = 0.0001
+        "scheduler_patience": 5,             # paper: early stopping 5 epochs
+        "patience":          25,             # training patience
+        "epochs":            50,             # paper Table 2
+        "batch_size":        32,             # paper Table 2
+        "augment":           "standard",
+        "model":             "efficientnet_gru",
+        "gru_hidden":        512,
+        "gru_layers":        2,
+        "gru_dropout":       0.5,            # paper Table 2: dropout 0.5
+        "output_dir":        "./outputs/C0",
+        "experiment":        "C0-EffV2S-GRU-OtsuPreprocess",
+    },
+
+    # ─── C1: EffV2S-GRU + B0 preprocessing (Reinhard, 384px) ─────────────────
+    # Same GRU architecture as C0, but using B0's Reinhard stain normalisation
+    # and 384×384 resolution instead of the paper's Otsu+224.
+    # Comparison: does better histology-specific stain norm help the GRU model?
+    "C1": {
+        **_REINHARD,                         # Reinhard stain norm (B0's pipeline)
+        "img_size":          384,            # B0's resolution
+        "optimizer":         "adam",         # same as C0
+        "lr":                1e-3,
+        "weight_decay":      1e-4,
+        "scheduler_patience": 5,
+        "patience":          25,
+        "epochs":            50,
+        "batch_size":        32,
+        "augment":           "standard",
+        "model":             "efficientnet_gru",
+        "gru_hidden":        512,
+        "gru_layers":        2,
+        "gru_dropout":       0.5,
+        "output_dir":        "./outputs/C1",
+        "experiment":        "C1-EffV2S-GRU-ReinhardPreprocess",
+    },
 }
 
 # ── Config → argv ───────────────────────────────────────────────────────────────
@@ -244,7 +316,7 @@ def main():
         epilog="Experiments: " + "  ".join(EXPERIMENTS),
     )
     p.add_argument("exp", choices=list(EXPERIMENTS.keys()),
-                   help="Experiment ID  (B0–B6)")
+                   help="Experiment ID  (B0–B6, C0–C1)")
     p.add_argument("--epochs",         type=int,   default=None,
                    help="Override epoch count")
     p.add_argument("--mag",            nargs="+",
@@ -322,6 +394,10 @@ def main():
     print("    B4  + EfficientNetV2-M (scale CNN)  ← paper's method")
     print("    B5  + CBAM on M backbone            ← proposed ★")
     print("    B6  + Macenko stain norm             ← best ★★")
+    print()
+    print("  GRU hybrid chain (C-series):")
+    print("    C0  EffV2S-GRU + Otsu preprocess (paper, 8-class)")
+    print("    C1  EffV2S-GRU + Reinhard preprocess (B0-style, 384px)")
     print()
     print("  Next: apply SupCon pipeline (ESCANet/Sup_Con/run_exp.py E5/E6)")
     print("  Then: best hybrid architecture + SupCon = ultimate model")

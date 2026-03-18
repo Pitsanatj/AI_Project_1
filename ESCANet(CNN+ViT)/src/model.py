@@ -19,43 +19,51 @@ from __future__ import annotations
 import time
 import torch.nn as nn
 
-from .models.ecsamet        import ECSAnet
-from .models.hybrid_ecsanet import HybridECSAnet
-from .models.lictnet        import LiCTNet
-from .models.swin_t       import SwinTiny
-from .models.deit_s       import DeiTSmall
-from .models.mobilevit_s  import MobileViTS
-from .models.fastvit_sa12 import FastViTSA12
-from .models.mobilenet_v3  import MobileNetV3
-from .models.shufflenet_v2 import ShuffleNetV2
+from .models.ecsamet           import ECSAnet
+from .models.hybrid_ecsanet    import HybridECSAnet
+from .models.lictnet           import LiCTNet
+from .models.swin_t            import SwinTiny
+from .models.deit_s            import DeiTSmall
+from .models.mobilevit_s       import MobileViTS
+from .models.fastvit_sa12      import FastViTSA12
+from .models.mobilenet_v3      import MobileNetV3
+from .models.shufflenet_v2     import ShuffleNetV2
+from .models.efficientnet_gru  import EfficientNetGRU
 
 MODEL_REGISTRY: dict[str, type] = {
     # ── Paper models
-    "ecsamet":          ECSAnet,
-    "hybrid_ecsanet":   HybridECSAnet,
-    "lictnet":          LiCTNet,
+    "ecsamet":           ECSAnet,
+    "hybrid_ecsanet":    HybridECSAnet,
+    "lictnet":           LiCTNet,
+    # ── GRU hybrid (C-series)
+    "efficientnet_gru":  EfficientNetGRU,
     # ── Transformer-based
-    "swin_t":           SwinTiny,
-    "deit_s":           DeiTSmall,
+    "swin_t":            SwinTiny,
+    "deit_s":            DeiTSmall,
     # ── Lightweight Transformer
-    "mobilevit_s":      MobileViTS,
-    "fastvit_sa12":     FastViTSA12,
+    "mobilevit_s":       MobileViTS,
+    "fastvit_sa12":      FastViTSA12,
     # ── Lightweight CNN
-    "mobilenet_v3":     MobileNetV3,
-    "shufflenet_v2":    ShuffleNetV2,
+    "mobilenet_v3":      MobileNetV3,
+    "shufflenet_v2":     ShuffleNetV2,
 }
 
 
 def build_model(
-    model_name:   str,
-    num_classes:  int   = 8,
-    weights_dir:  str | None = None,
-    proj_dim:     int   = 0,
-    # Hybrid model args (ignored for all other models)
-    cnn_backbone: str   = "s",
-    vit_branch:   str   = "vit_b16",
-    use_cbam:     bool  = False,
-    fusion_dim:   int   = 512,
+    model_name:    str,
+    num_classes:   int   = 8,
+    weights_dir:   str | None = None,
+    proj_dim:      int   = 0,
+    # Hybrid CNN+ViT args (hybrid_ecsanet only)
+    cnn_backbone:  str   = "s",
+    vit_branch:    str   = "vit_b16",
+    use_cbam:      bool  = False,
+    fusion_dim:    int   = 512,
+    # GRU args (efficientnet_gru only)
+    gru_hidden:    int   = 512,
+    gru_layers:    int   = 2,
+    gru_dropout:   float = 0.5,
+    bidirectional: bool  = False,
 ) -> nn.Module:
     """
     Instantiate a model by registry key.
@@ -98,6 +106,15 @@ def build_model(
             vit_branch=vit_branch,
             use_cbam=use_cbam,
             fusion_dim=fusion_dim,
+        )
+    elif key == "efficientnet_gru":
+        model = EfficientNetGRU(
+            num_classes   = num_classes,
+            weights_dir   = weights_dir,
+            gru_hidden    = gru_hidden,
+            gru_layers    = gru_layers,
+            gru_dropout   = gru_dropout,
+            bidirectional = bidirectional,
         )
     elif proj_dim > 0 and key == "ecsamet":
         model = MODEL_REGISTRY[key](num_classes=num_classes, weights_dir=weights_dir,

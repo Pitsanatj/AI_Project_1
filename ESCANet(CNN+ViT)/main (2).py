@@ -117,7 +117,9 @@ from src.metrics    import (
 from src.model      import build_model
 from src.preprocess import (
     StainNormalizationTransform, MacenkoStainNormalizationTransform,
+    OtsuSegmentationTransform,
     build_final_normalise, build_preprocess, build_vtpreprocess,
+    build_paper_preprocess, build_paper_vtpreprocess,
 )
 from src.train    import train_one_epoch
 from src.validate import evaluate
@@ -150,7 +152,7 @@ def parse_args() -> argparse.Namespace:
                    help="Apply torch.compile() to the model (PyTorch 2+, ~15-30%% faster)")
 
     # Preprocessing
-    p.add_argument("--preprocess", choices=["reinhard", "macenko", "none"], default="reinhard")
+    p.add_argument("--preprocess", choices=["reinhard", "macenko", "otsu", "none"], default="reinhard")
     p.add_argument("--img_size", type=int, default=384)
 
     # Augmentation
@@ -184,6 +186,16 @@ def parse_args() -> argparse.Namespace:
                    help="CBAM(1280) on CNN branch before global avg-pool [hybrid only]")
     p.add_argument("--fusion_dim", type=int, default=512,
                    help="Hidden dim of the fusion head [hybrid only, default 512]")
+
+    # GRU model args (only used when --model efficientnet_gru)
+    p.add_argument("--gru_hidden", type=int, default=512,
+                   help="GRU hidden state dimension (default 512) [efficientnet_gru only]")
+    p.add_argument("--gru_layers", type=int, default=2,
+                   help="Number of stacked GRU layers (default 2) [efficientnet_gru only]")
+    p.add_argument("--gru_dropout", type=float, default=0.5,
+                   help="Dropout rate in GRU + classifier (paper default 0.5) [efficientnet_gru only]")
+    p.add_argument("--bidirectional", action="store_true",
+                   help="Bidirectional GRU (doubles hidden dim) [efficientnet_gru only]")
 
     # Supervised Contrastive Learning (E2 / E3 / E4)
     p.add_argument("--supcon_alpha", type=float, default=0.0,
@@ -282,6 +294,10 @@ def train_magnification(mag, loaders, model_name, args, device, use_amp, writer,
         vit_branch=args.vit_branch,
         use_cbam=args.use_cbam,
         fusion_dim=args.fusion_dim,
+        gru_hidden=args.gru_hidden,
+        gru_layers=args.gru_layers,
+        gru_dropout=args.gru_dropout,
+        bidirectional=args.bidirectional,
     ).to(device)
 
     # ── Load pre-trained weights for fine-tuning (E2/E3/E4) ──────────────────
@@ -691,8 +707,15 @@ def main():
         if args.preprocess in ("reinhard", "macenko"):
             print(f"  WARNING: {args.preprocess} requested but no target image found. Skipping.")
 
-    preprocess      = build_preprocess(args.img_size, stain_norm)
-    vtpreprocess    = build_vtpreprocess(args.img_size, stain_norm)
+    # ── Build preprocessing pipelines ─────────────────────────────────────────
+    if args.preprocess == "otsu":
+        # Paper pipeline: Resize → CenterCrop → Otsu segmentation → uint8/float32
+        print(f"  Preprocessing: Otsu segmentation (paper pipeline, img_size={args.img_size})")
+        preprocess   = build_paper_preprocess(args.img_size, use_otsu=True)
+        vtpreprocess = build_paper_vtpreprocess(args.img_size, use_otsu=True)
+    else:
+        preprocess   = build_preprocess(args.img_size, stain_norm)
+        vtpreprocess = build_vtpreprocess(args.img_size, stain_norm)
     augment         = build_augment(args.augment)
     balance_augment = build_balance_augment()
     normalise       = build_final_normalise()

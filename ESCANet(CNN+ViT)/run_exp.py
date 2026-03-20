@@ -272,16 +272,36 @@ EXPERIMENTS: dict[str, dict] = {
     # Same GRU architecture as C0, but using B0's Reinhard stain normalisation
     # and 384×384 resolution instead of the paper's Otsu+224.
     # Comparison: does better histology-specific stain norm help the GRU model?
+#     "C1": {
+#         **_REINHARD,                         # Reinhard stain norm (B0's pipeline)
+#         "img_size":          384,            # B0's resolution
+#         "optimizer":         "adam",         # same as C0
+#         "lr":                1e-3,
+#         "weight_decay":      1e-4,
+#         "scheduler_patience": 5,
+#         "patience":          25,
+#         "epochs":            50,
+#         "batch_size":        32,
+#         "augment":           "standard",
+#         "model":             "efficientnet_gru",
+#         "gru_hidden":        512,
+#         "gru_layers":        2,
+#         "gru_dropout":       0.5,
+#         "output_dir":        "./outputs/C1",
+#         "experiment":        "C1-EffV2S-GRU-ReinhardPreprocess",
+#     },
+# }
+
     "C1": {
         **_REINHARD,                         # Reinhard stain norm (B0's pipeline)
         "img_size":          384,            # B0's resolution
-        "optimizer":         "adam",         # same as C0
+        "optimizer":         "sgd",         # same as C0
         "lr":                1e-3,
-        "weight_decay":      1e-4,
-        "scheduler_patience": 5,
+        "weight_decay":      1e-2,
+        "scheduler_patience": 3,
         "patience":          25,
         "epochs":            50,
-        "batch_size":        32,
+        "batch_size":        16,
         "augment":           "standard",
         "model":             "efficientnet_gru",
         "gru_hidden":        512,
